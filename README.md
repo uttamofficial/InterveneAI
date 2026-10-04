@@ -11,6 +11,32 @@ every number below coming from executed pipeline outputs.
 > pipeline (scripts, notebooks, tests). Nothing is invented. Synthetic
 > quantities are labeled as model estimates throughout.
 
+![Python](https://img.shields.io/badge/Python-3.14-blue)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-1.9-orange)
+![SHAP](https://img.shields.io/badge/SHAP-0.52-green)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.65-red)
+![pytest](https://img.shields.io/badge/pytest-47_passed-brightgreen)
+
+**Who will buy, who buys *because of* the intervention, and is it worth the
+money — answered with evidence, including the answers that failed.**
+
+![InterveneAI dashboard overview](docs/images/overview.png)
+
+> **The headline result is an honest negative one.** The optimizer believes a
+> 20k BRL campaign earns **+86,308 BRL**; simulation ground truth says
+> **−11,704 BRL** — and *treat-nobody* beats every strategy. This project
+> reports that gap instead of hiding it.
+
+| In 30 seconds | |
+|---|---|
+| Problem | Target costly interventions under a budget (Olist e-commerce) |
+| Key trick | Uplift (incremental benefit), never raw purchase probability |
+| Data | 348,767 customer-snapshots; 0.60% repurchase rate (166:1 imbalance) |
+| Model | LogReg champion: test PR-AUC **0.0126**, lift@5% **3.42x** |
+| Proof | 47 passing tests; every number pipeline-generated; live dashboard |
+
+**Contents:** Problem · [Why prediction fails](#2-why-normal-purchase-prediction-is-insufficient) · [EDA](#9-eda-findings-notebooks03) · [Modeling](#10-predictive-modeling) · [Causal](#13-causal-inference-notebooks06) · [Uplift](#14-uplift-modeling-notebooks07) · [Optimization](#15-intervention-optimization-notebooks08) · [ROI](#16-roi-simulator-notebooks09-simulate_roi) · [Explainability](#17-explainability-notebooks09-shap-0520) · [Dashboard](#18-streamlit-dashboard-dashboardapppy) · [Run it](#21-how-to-run) · [Results](#23-results)
+
 ---
 
 ## 1. Problem statement
@@ -32,6 +58,11 @@ no more incremental gain (AUUC 109.3 vs 109.0 vs random 104.4). Strategy A
 (target likely buyers) has model-negative expected profit at every budget
 (−21,638 BRL at 20k). "Who buys" can never substitute for "who benefits."
 
+![Customer Intelligence: purchase probability, features, per-intervention uplift](docs/images/customer.png)
+*Live dashboard: one customer, purchase probability 0.45, feature snapshot,
+and a per-intervention uplift table — the personalized view behind the
+aggregate numbers.*
+
 ## 3. Solution overview
 
 Stacked customer-snapshot panel → leakage-audited behavioral features →
@@ -39,7 +70,7 @@ chronological rare-event modeling (PR-AUC-driven) → synthetic randomized
 experiment with known ground truth → causal estimation with oracle checks →
 T-learner uplift → profit-greedy optimization scored against ground truth →
 SHAP explanations, ROI simulator, and a 6-section Streamlit dashboard. Tests
-(35, passing) guard every stage.
+(47, passing) guard every stage.
 
 ## 4. Architecture diagram
 
@@ -59,7 +90,7 @@ flowchart TD
     MOD --> DASH["11 Streamlit dashboard"]
     OPT --> DASH
     EXP --> DASH
-    FEAT --> TEST["12 pytest suite<br/>35 tests"]
+    FEAT --> TEST["12 pytest suite<br/>47 tests"]
     MOD --> TEST
     SIM --> TEST
     OPT --> TEST
@@ -131,6 +162,10 @@ lift 6.62x/3.42x/2.53x at top-1/5/10%. HGB led test F1 (0.048), RF led Brier
 (0.145) — ranking, the task at hand, favored LogReg on PR-AUC, ROC-AUC and
 lift@5% simultaneously.
 
+![Precision-Recall and ROC curves on the frozen test window](docs/images/model-performance.png)
+*Live dashboard: one curve per candidate — the rare-event PR curve (left)
+vs the flattering ROC (right).*
+
 ## 11. Class imbalance strategy
 
 166:1 positives. Accuracy never computed for selection; majority baseline
@@ -184,6 +219,10 @@ C 6,030 (+86,308 / −11,704). Oracle-optimal is treat-nobody: true effects
 (C > B > A) does not transfer to oracle (A > C > B) — miscalibrated
 optimization manufactures confidence, not profit.
 
+![Intervention Simulator: strategy C at 20k BRL budget](docs/images/simulator.png)
+*Live dashboard: 6,030 targeted, ROI 4.32 believed — oracle −11,704. The
+gap between the two numbers is the finding.*
+
 ## 16. ROI simulator (`notebooks/09`, `simulate_roi()`)
 
 Changeable budget, per-arm costs, order value (scalar or per-customer AOV),
@@ -198,6 +237,9 @@ Assumptions move belief, not truth.
 
 LinearExplainer (exact) on the champion: global mean|SHAP| — AOV 0.207,
 last-gap 0.204, spend 0.202, recency fifth (0.067); duplicates split credit.
+
+![SHAP global importance for the champion model](docs/images/explainability.png)
+*Live dashboard: money and repeat-history features dominate; recency trails.*
 Individual: top customer (P = 0.999) rides one extreme gap value (+9.46
 log-odds) — outlier leverage, faithfully shown; median customer (P = 0.45)
 flat. Sums verified = model log-odds. Associational only.
@@ -250,7 +292,7 @@ jupyter nbconvert --to notebook --execute notebooks/03_eda_and_statistics.ipynb 
 
 ## 22. Testing
 
-`.venv/bin/python -m pytest tests/ -q` — **35 passed (~7s)**, deterministic:
+`.venv/bin/python -m pytest tests/ -q` — **47 passed (~9s)**, deterministic:
 identity, uniqueness, temporal leakage (500-row order-by-order recheck),
 feature math, target integrity (exactly 2,085 positives; 300-row order
 spot-check), split ordering vs saved JSONs, simulation reproducibility,
