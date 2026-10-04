@@ -33,6 +33,7 @@ def simulate_roi(
     n_customers=None,
     strategy="C_profit",
     decision_frame=None,
+    allow_retrain=True,
 ):
     """Run one ROI scenario. All quantities are estimates.
 
@@ -46,6 +47,8 @@ def simulate_roi(
         same columns as load_uplift_frame() output (lets callers such as
         the Streamlit dashboard avoid reading the full feature store).
         Default None = load from disk exactly as before.
+    allow_retrain: False makes missing arm bundles a clear RuntimeError
+        instead of retraining (dashboard deployment path).
     """
     from src.optimization.intervention_optimizer import COSTS
 
@@ -53,7 +56,7 @@ def simulate_roi(
     if intervention_costs:
         costs.update({int(k): float(v) for k, v in intervention_costs.items()})
 
-    models = load_arm_models()
+    models = load_arm_models(allow_retrain=allow_retrain)
     if decision_frame is None:
         df = load_uplift_frame()
         snap = df[df["snapshot_date"] == DECISION_SNAPSHOT].copy()

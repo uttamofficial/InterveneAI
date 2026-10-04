@@ -182,3 +182,58 @@ def test_simulate_roi_frame_matches_disk_path():
     assert via_frame["customers_targeted"] == 6030
     assert abs(via_frame["expected_incremental_profit"] - 86308.33) < 0.01
     assert abs(via_frame["oracle_profit"] - (-11703.72)) < 0.01
+
+
+def test_deployment_bundles_exist_in_repo():
+    import joblib
+
+    for fname in (
+        "uplift_tlearner.pkl",
+        "uplift_tlearner_free_delivery.pkl",
+        "uplift_tlearner_loyalty_points.pkl",
+        "champion_pipeline.pkl",
+    ):
+        path = ROOT / "models" / fname
+        assert path.exists(), fname
+        assert path.stat().st_size > 0, fname
+    bundle = joblib.load(ROOT / "models" / "uplift_tlearner.pkl")
+    assert bundle["arm"] == 1
+
+
+def test_load_arm_models_never_touches_frame(monkeypatch):
+    import src.optimization.intervention_optimizer as opt
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("load_uplift_frame must not be called")
+
+    monkeypatch.setattr(opt, "load_uplift_frame", forbidden)
+    models = opt.load_arm_models(allow_retrain=False)
+    assert set(models) == {1, 2, 3}
+
+
+def test_missing_bundle_raises_clear_error(tmp_path):
+    import shutil
+
+    import src.optimization.intervention_optimizer as opt
+
+    shutil.copy(
+        ROOT / "models" / "uplift_tlearner.pkl",
+        tmp_path / "uplift_tlearner.pkl",
+    )
+    diag = opt.diagnose_bundles(tmp_path)
+    assert {r["file"].split("/")[-1]: r["exists"] for r in diag} == {
+        "uplift_tlearner.pkl": True,
+        "uplift_tlearner_free_delivery.pkl": False,
+        "uplift_tlearner_loyalty_points.pkl": False,
+        "champion_pipeline.pkl": False,
+    }
+    try:
+        opt.load_arm_models(model_dir=tmp_path, allow_retrain=False)
+    except RuntimeError as e:
+        assert str(e) == (
+            "Missing uplift deployment bundle: "
+            "uplift_tlearner_free_delivery.pkl "
+            "(retraining disabled on this path)"
+        )
+    else:
+        raise AssertionError("RuntimeError not raised for missing bundle")

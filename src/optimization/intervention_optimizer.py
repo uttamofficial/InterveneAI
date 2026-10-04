@@ -85,11 +85,73 @@ PRIMARY_BUDGET = 20000.0
 BUDGET_LEVELS = (5000.0, 20000.0, 50000.0, 150000.0)
 
 
-def load_arm_models():
-    """Coupon bundle from Phase 8; train the other two identically."""
+BUNDLE_FILES = {
+    1: "uplift_tlearner.pkl",
+    2: "uplift_tlearner_free_delivery.pkl",
+    3: "uplift_tlearner_loyalty_points.pkl",
+}
+
+
+def diagnose_bundles(model_dir=None):
+    """Report bundle presence/sizes with repo-relative paths only."""
+    import os
+
+    base = Path(model_dir) if model_dir else MODEL_DIR
+
+    def rel(path):
+        return os.path.relpath(path, Path.cwd())
+
+    rows = []
+    for arm in ARMS:
+        path = base / BUNDLE_FILES[arm]
+        rows.append(
+            {
+                "arm": ARM_NAMES[arm],
+                "file": rel(path),
+                "exists": path.exists(),
+                "size_bytes": path.stat().st_size
+                if path.exists()
+                else None,
+            }
+        )
+    champ = base / "champion_pipeline.pkl"
+    rows.append(
+        {
+            "arm": "champion",
+            "file": rel(champ),
+            "exists": champ.exists(),
+            "size_bytes": champ.stat().st_size
+            if champ.exists()
+            else None,
+        }
+    )
+    return rows
+
+
+def load_arm_models(model_dir=None, allow_retrain=True):
+    """Coupon bundle from Phase 8; train the other two identically.
+
+    allow_retrain=False (dashboard deployment path) raises a clear
+    RuntimeError naming the missing bundle instead of falling back to
+    retraining, which requires the full feature store.
+    """
+    base = Path(model_dir) if model_dir else MODEL_DIR
+    for row in diagnose_bundles(base):
+        print(
+            f"  bundle {row['file']}: "
+            f"exists={row['exists']} size={row['size_bytes']}"
+        )
+    if not allow_retrain:
+        for arm in ARMS:
+            if not (base / BUNDLE_FILES[arm]).exists():
+                raise RuntimeError(
+                    "Missing uplift deployment bundle: "
+                    f"{BUNDLE_FILES[arm]} "
+                    "(retraining disabled on this path)"
+                )
     models = {}
     bundle = joblib.load(
-        MODEL_DIR / "uplift_tlearner.pkl"
+        base / "uplift_tlearner.pkl"
     )
     assert bundle["arm"] == 1, "Phase-8 bundle must be coupon"
     models[1] = (
@@ -100,14 +162,17 @@ def load_arm_models():
     # missing and must be trained. Saved bundles never touch disk data.
     train = None
     for arm in (2, 3):
-        path = MODEL_DIR / (
-            f"uplift_tlearner_{ARM_NAMES[arm]}.pkl"
-        )
+        path = base / BUNDLE_FILES[arm]
         if path.exists():
             saved = joblib.load(path)
             models[arm] = (
                 saved["treated_pipeline"],
                 saved["control_pipeline"],
+            )
+        elif not allow_retrain:
+            raise RuntimeError(
+                "Missing uplift deployment bundle: "
+                f"{BUNDLE_FILES[arm]} (retraining disabled on this path)"
             )
         else:
             if train is None:

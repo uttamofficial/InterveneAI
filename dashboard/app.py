@@ -255,6 +255,7 @@ def section_simulator():
                 n_customers=int(cap) if cap else None,
                 strategy=st.session_state.sim_strategy,
                 decision_frame=load_snapshot(),
+                allow_retrain=False,
             )
         cols = st.columns(3)
         cols[0].metric("Customers targeted", f"{r['customers_targeted']:,}")
