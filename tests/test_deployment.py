@@ -140,3 +140,45 @@ def test_budget_constraint_from_assets():
     plan_c = optimize(best, 20000.0, "exp_profit", True)
     assert len(plan_c) == 6030
     assert abs(plan_c["expected_incremental_cost"].sum() - 20000.0) < 1e-6
+
+
+def test_simulate_roi_with_frame_never_reads_v3(monkeypatch):
+    """Block v3 access: the asset-backed simulator path must not need it."""
+    import pandas as pd
+
+    real_read = pd.read_parquet
+
+    def guarded(path, *args, **kwargs):
+        if "customer_features_v3" in str(
+            path
+        ) or "intervention_experiment" in str(path):
+            raise FileNotFoundError(f"blocked by test: {path}")
+        return real_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_parquet", guarded)
+
+    from src.optimization.roi_simulator import simulate_roi
+
+    snap = pd.read_parquet(
+        ASSETS / "decision_snapshot.parquet"
+    ).head(2000)
+    snap["snapshot_date"] = pd.to_datetime(snap["snapshot_date"])
+    result = simulate_roi(
+        budget=500.0, strategy="C_profit", decision_frame=snap
+    )
+    assert result["customers_targeted"] > 0
+    assert result["campaign_cost"] <= 500.0 + 1e-6
+    assert result["expected_incremental_profit"] > 0  # C filters positive
+
+
+def test_simulate_roi_frame_matches_disk_path():
+    from src.optimization.roi_simulator import simulate_roi
+
+    snap = pd.read_parquet(ASSETS / "decision_snapshot.parquet")
+    snap["snapshot_date"] = pd.to_datetime(snap["snapshot_date"])
+    via_frame = simulate_roi(
+        budget=20000.0, strategy="C_profit", decision_frame=snap
+    )
+    assert via_frame["customers_targeted"] == 6030
+    assert abs(via_frame["expected_incremental_profit"] - 86308.33) < 0.01
+    assert abs(via_frame["oracle_profit"] - (-11703.72)) < 0.01

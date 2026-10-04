@@ -96,8 +96,9 @@ def load_arm_models():
         bundle["treated_pipeline"],
         bundle["control_pipeline"],
     )
-    df = load_uplift_frame()
-    train = df[df["snapshot_date"] <= TRAIN_END]
+    # The full uplift frame is loaded lazily: only when an arm bundle is
+    # missing and must be trained. Saved bundles never touch disk data.
+    train = None
     for arm in (2, 3):
         path = MODEL_DIR / (
             f"uplift_tlearner_{ARM_NAMES[arm]}.pkl"
@@ -109,6 +110,9 @@ def load_arm_models():
                 saved["control_pipeline"],
             )
         else:
+            if train is None:
+                df = load_uplift_frame()
+                train = df[df["snapshot_date"] <= TRAIN_END]
             tr = train[train["intervention_type"].isin((0, arm))]
             pipe_t, pipe_c = fit_t_learner(tr)
             models[arm] = (pipe_t, pipe_c)
