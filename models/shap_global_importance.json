@@ -1,0 +1,56 @@
+{
+  "rows": [
+    {
+      "feature": "avg_order_value_180d",
+      "mean_abs_shap": 0.21166921190458227,
+      "mean_shap": -0.016930905356574506
+    },
+    {
+      "feature": "total_spend_180d",
+      "mean_abs_shap": 0.2055182856974649,
+      "mean_shap": 0.017951936481050246
+    },
+    {
+      "feature": "days_since_previous_purchase",
+      "mean_abs_shap": 0.08974788335147864,
+      "mean_shap": 0.05408242466681113
+    },
+    {
+      "feature": "purchase_velocity_30d",
+      "mean_abs_shap": 0.066813940849604,
+      "mean_shap": -0.0034307543440104454
+    },
+    {
+      "feature": "purchase_count_30d",
+      "mean_abs_shap": 0.0668139408495936,
+      "mean_shap": -0.0034307543440099753
+    },
+    {
+      "feature": "recency_days",
+      "mean_abs_shap": 0.06632468119702943,
+      "mean_shap": 0.007826223681440442
+    },
+    {
+      "feature": "avg_days_between_orders",
+      "mean_abs_shap": 0.05684002406784863,
+      "mean_shap": -0.035213696278643715
+    },
+    {
+      "feature": "purchase_count_180d",
+      "mean_abs_shap": 0.03385096857114428,
+      "mean_shap": -0.0008926943188592875
+    },
+    {
+      "feature": "purchase_velocity_90d",
+      "mean_abs_shap": 0.01395368578401655,
+      "mean_shap": -0.0012316056317609161
+    },
+    {
+      "feature": "purchase_count_90d",
+      "mean_abs_shap": 0.013953685784007068,
+      "mean_shap": -0.00123160563176008
+    }
+  ],
+  "expected_value": -0.10818020723960967,
+  "n": 2000
+}
