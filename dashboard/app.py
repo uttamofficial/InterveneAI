@@ -66,9 +66,17 @@ def load_json(*parts):
 
 
 @st.cache_data
-def load_panel():
+def load_overview():
+    with open(
+        artifact("dashboard", "assets", "overview.json")
+    ) as f:
+        return json.load(f)
+
+
+@st.cache_data
+def load_snapshot():
     df = pd.read_parquet(
-        artifact("data", "processed", "customer_features_v3.parquet")
+        artifact("dashboard", "assets", "decision_snapshot.parquet")
     )
     df["snapshot_date"] = pd.to_datetime(df["snapshot_date"])
     return df
@@ -77,68 +85,54 @@ def load_panel():
 @st.cache_data
 def load_recommendations():
     recs = pd.read_parquet(
-        artifact(
-            "data", "synthetic", "optimization_recommendations.parquet"
-        )
+        artifact("dashboard", "assets", "recommendations.parquet")
     )
     return recs
 
 
 @st.cache_data
-def test_scores():
-    """Champion + candidate test scores (frozen test window)."""
-    df = load_panel()
-    comp = load_json("models", "model_comparison.json")
-    test = df[
-        df["snapshot_date"] > pd.Timestamp(comp["splits"]["val"][1])
-    ]
-    champion, _ = load_bundles()
-    features = champion["features"]
-    out = {"y": test["purchased_next_60_days"].to_numpy()}
-    pipes = {"champion_logreg": champion["pipeline"]}
-    for name in ("logreg", "rf", "hgb"):
-        saved = joblib.load(
-            artifact("models", "candidates", f"{name}.pkl")
-        )
-        pipes[name if name != "logreg" else "tuned_logreg"] = saved[
-            "pipeline"
-        ]
-    for name, pipe in pipes.items():
-        out[name] = pipe.predict_proba(test[features])[:, 1]
-    return out
+def load_test_scores():
+    """Precomputed target + model scores on the frozen test window."""
+    frame = pd.read_parquet(
+        artifact("dashboard", "assets", "test_scores.parquet")
+    )
+    return {
+        "y": frame["y"].to_numpy(),
+        "champion_logreg": frame["champion_logreg"].to_numpy(),
+        "tuned_logreg": frame["tuned_logreg"].to_numpy(),
+        "rf": frame["rf"].to_numpy(),
+        "hgb": frame["hgb"].to_numpy(),
+    }
 
 
 @st.cache_resource
 def shap_explainer():
     from src.evaluation.explainability import (
-        TEST_START,
         design_matrix,
         load_champion,
         make_explainer,
     )
 
     bundle = load_champion()
-    df = load_panel()
-    tst = df[df["snapshot_date"] >= TEST_START]
-    Xm = design_matrix(bundle, tst)
-    rng = np.random.default_rng(42)
-    explainer = make_explainer(
-        bundle, Xm[rng.choice(len(Xm), size=100, replace=False)]
+    bg = pd.read_parquet(
+        artifact("dashboard", "assets", "shap_background.parquet")
     )
-    return bundle, tst, Xm, explainer
+    X_bg = design_matrix(bundle, bg)
+    explainer = make_explainer(bundle, X_bg)
+    return bundle, explainer
 
 
 def section_overview():
     st.header("Overview")
-    df = load_panel()
+    ov = load_overview()
     comp = load_json("models", "model_comparison.json")
     champ = comp["details"]["logreg"]["test"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Customers", f"{df['customer_unique_id'].nunique():,}")
-    c2.metric("Observations", f"{len(df):,}")
+    c1.metric("Customers", f"{ov['customers']:,}")
+    c2.metric("Observations", f"{ov['observations']:,}")
     c3.metric(
         "Purchase rate",
-        f"{100 * df['purchased_next_60_days'].mean():.2f}%",
+        f"{100 * ov['purchase_rate']:.2f}%",
     )
     c4.metric(
         "Champion test PR-AUC",
@@ -153,8 +147,7 @@ def section_overview():
 
 
 def customer_row(customer_id):
-    df = load_panel()
-    snap = df[df["snapshot_date"] == DECISION_SNAPSHOT]
+    snap = load_snapshot()
     hit = snap[snap["customer_unique_id"] == customer_id]
     return hit, snap
 
@@ -163,8 +156,7 @@ def section_customer():
     st.header("Customer Intelligence")
     st.caption(f"Decision snapshot {DECISION_SNAPSHOT.date()}.")
     hit, snap = None, None
-    df = load_panel()
-    snap = df[df["snapshot_date"] == DECISION_SNAPSHOT]
+    snap = load_snapshot()
     sample = snap.sample(500, random_state=42)["customer_unique_id"].tolist()
     choice = st.selectbox("Customer (500-row sample)", sample)
     typed = st.text_input(
@@ -262,6 +254,7 @@ def section_simulator():
                 order_value=order_value,
                 n_customers=int(cap) if cap else None,
                 strategy=st.session_state.sim_strategy,
+                decision_frame=load_snapshot(),
             )
         cols = st.columns(3)
         cols[0].metric("Customers targeted", f"{r['customers_targeted']:,}")
@@ -299,7 +292,7 @@ def section_performance():
         "Champion selected on validation PR-AUC "
         f"({comp['champion']}); accuracy never used."
     )
-    scores = test_scores()
+    scores = load_test_scores()
     import matplotlib.pyplot as plt
     from sklearn.metrics import precision_recall_curve, roc_curve
 
@@ -365,14 +358,13 @@ def section_explain():
         "drivers. Duplicate velocity/count features split credit."
     )
     st.subheader("Customer-level explanation")
-    df = load_panel()
-    snap = df[df["snapshot_date"] == DECISION_SNAPSHOT]
+    snap = load_snapshot()
     sample = snap.sample(200, random_state=7)["customer_unique_id"].tolist()
     cid = st.selectbox("Customer", sample, key="shap_customer")
     hit = snap[snap["customer_unique_id"] == cid]
     if hit.empty:
         return
-    bundle, tst, Xm, explainer = shap_explainer()
+    bundle, explainer = shap_explainer()
     from src.evaluation.explainability import individual_explanation
 
     row = hit[bundle["features"]]
@@ -401,7 +393,7 @@ def section_method():
         "splits. No temporal leakage by construction (audited in Phase 2)."
     )
     st.subheader("Simulated experiment")
-    params = load_json("data", "synthetic", "intervention_params.json")
+    params = load_json("dashboard", "assets", "intervention_params.json")
     st.write(
         "Olist contains no randomized intervention. Treatment, costs and "
         "outcomes are synthetic with documented assumed effects "

@@ -22,6 +22,13 @@ data/synthetic/*
 models/*.pkl
 models/*.joblib
 models/*.bin
+# Nested candidate pickles are large retrainable artifacts: never track.
+models/candidates/*.pkl
+# Narrow exceptions: small runtime models the Streamlit dashboard loads.
+!models/champion_pipeline.pkl
+!models/uplift_tlearner.pkl
+!models/uplift_tlearner_free_delivery.pkl
+!models/uplift_tlearner_loyalty_points.pkl
 
 # MLflow
 mlruns/

@@ -32,6 +32,7 @@ def simulate_roi(
     order_value=None,
     n_customers=None,
     strategy="C_profit",
+    decision_frame=None,
 ):
     """Run one ROI scenario. All quantities are estimates.
 
@@ -41,6 +42,10 @@ def simulate_roi(
         purchase (default None = each customer's own historical AOV).
     n_customers: cap on ranked candidates before budget allocation.
     strategy: one of A_purchase_prob / B_uplift / C_profit.
+    decision_frame: optional pre-loaded decision-snapshot frame with the
+        same columns as load_uplift_frame() output (lets callers such as
+        the Streamlit dashboard avoid reading the full feature store).
+        Default None = load from disk exactly as before.
     """
     from src.optimization.intervention_optimizer import COSTS
 
@@ -49,8 +54,11 @@ def simulate_roi(
         costs.update({int(k): float(v) for k, v in intervention_costs.items()})
 
     models = load_arm_models()
-    df = load_uplift_frame()
-    snap = df[df["snapshot_date"] == DECISION_SNAPSHOT].copy()
+    if decision_frame is None:
+        df = load_uplift_frame()
+        snap = df[df["snapshot_date"] == DECISION_SNAPSHOT].copy()
+    else:
+        snap = decision_frame.copy()
     _, best = build_prediction_frame(snap, models)
 
     # Apply assumption overrides to a working copy.
